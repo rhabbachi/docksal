@@ -326,6 +326,7 @@ IMAGE_DNS=${IMAGE_DNS:-docksal/dns:1.1}
 
 # User to be passed to the CLI container when executing commands.
 CLI_USER=${CLI_USER:-docker}
+PROJECT_ROOT_CONTAINER=${PROJECT_ROOT_CONTAINER:-/var/www}
 #---------------------------- Helper functions --------------------------------
 
 DOCKSAL_PATH='' #docksal path value will be cached here
@@ -5238,7 +5239,7 @@ run_cli ()
 		# (exit \$?) is a hack to return correct exit codes when docker exec is run with tty (-t).
 		# COLUMNS and LINES have to be passed to workaround a bug in Docker. See https://github.com/moby/moby/issues/35407#issuecomment-355753176
 		${winpty} docker run --rm -it \
-			--mount type=bind,src=$(pwd),dst=/var/www \
+			--mount type=bind,src=$(pwd),dst=$PROJECT_ROOT_CONTAINER \
 			--mount ${MOUNT_HOME} \
 			--mount type=volume,src=docksal_ssh_agent,dst=/.ssh-agent,readonly \
 			-e BLACKFIRE_CLIENT_ID \
@@ -5259,7 +5260,7 @@ run_cli ()
 	else
 		# non-interactive
 		docker run --rm \
-			--mount type=bind,src=$(pwd),dst=/var/www \
+			--mount type=bind,src=$(pwd),dst=$PROJECT_ROOT_CONTAINER \
 			--mount ${MOUNT_HOME} \
 			--mount type=volume,src=docksal_ssh_agent,dst=/.ssh-agent,readonly \
 			-e BLACKFIRE_CLIENT_ID \
@@ -5675,18 +5676,18 @@ ngrok_share ()
 	local ngrok_conf_path="$(get_project_path_dc)/.docksal/etc/ngrok"
 	local ngrok_conf="${ngrok_conf_path}/ngrok.yml"
 	if [[ -f "$ngrok_conf" ]]; then
-    		CONF_ARGS="-config /var/www/.docksal/etc/ngrok/ngrok.yml"
+		CONF_ARGS="-config $PROJECT_ROOT_CONTAINER/.docksal/etc/ngrok/ngrok.yml"
   	fi
 
 	local local_ngrok_conf="${ngrok_conf_path}/ngrok-${DOCKSAL_ENVIRONMENT}.yml"
 	if [[ -f "$local_ngrok_conf" ]]; then
-    		CONF_ARGS="$CONF_ARGS -config /var/www/.docksal/etc/ngrok/ngrok-${DOCKSAL_ENVIRONMENT}.yml"
+		CONF_ARGS="$CONF_ARGS -config $PROJECT_ROOT_CONTAINER/.docksal/etc/ngrok/ngrok-${DOCKSAL_ENVIRONMENT}.yml"
   	fi
 
   	if [[ -f "$ngrok_conf" ]] || [[ -f "$local_ngrok_conf" ]]; then
 	  	ARGS="ngrok start ${CONF_ARGS} -all"
 		# Overwrite settings with a configuration if its available
-		NGROK_VOLUME="-v $(get_project_path_dc)/.docksal:/var/www/.docksal"
+		NGROK_VOLUME="-v $(get_project_path_dc)/.docksal:$PROJECT_ROOT_CONTAINER/.docksal"
 	fi
 
 	# Add -host-header by default if no arguments are included.
@@ -6715,7 +6716,7 @@ addon_execute ()
 	shift
 	if [[ "$_exec_target" != "" ]]; then
 		# Replace addon path as it is on the host, with the matching path inside container
-		container_addon_path="/var/www/${addon/$PROJECT_ROOT\//}"
+		container_addon_path="$PROJECT_ROOT_CONTAINER/${addon/$PROJECT_ROOT\//}"
 		if [[ "$@" != "" ]]; then
 			# Escape spaces that are "spaces" and not parameter delimiters (i.e., param1 param2\ with\ spaces param3)
 			cmd="$container_addon_path "$(printf " %q" "$@")
@@ -7017,7 +7018,7 @@ provider_pull_generic_drush_rsync ()
 		separator="--"
 	fi
 	local rsync_filesdir
-	rsync_filesdir="/var/www/${DOCROOT}/${filesdir}"
+	rsync_filesdir="$PROJECT_ROOT_CONTAINER/${DOCROOT}/${filesdir}"
 	_exec drush -q -y rsync \
 		@${hostingsite}.${hostingenv}:%files \
 		${rsync_filesdir} \
@@ -7222,7 +7223,7 @@ provider_pull_pantheon_files ()
 		--progress \
 		-e 'ssh -p 2222' \
 		${host_url}:files/ \
-		/var/www/${DOCROOT}/${filesdir} \
+		$PROJECT_ROOT_CONTAINER/${DOCROOT}/${filesdir} \
 		--delete \
 		${rsyncoptions}"
 	if_failed_error "Could not rsync files from Pantheon. Confirm that SSH Key has been added to Pantheon account and added to Docksal SSH-Agent."
@@ -7298,7 +7299,7 @@ provider_pull_platformsh_files ()
 		--ipv4 \
 		--progress \
 		${host_url}:/app/${DOCROOT}/${filesdir} \
-		/var/www/${DOCROOT}/${filesdir} \
+		$PROJECT_ROOT_CONTAINER/${DOCROOT}/${filesdir} \
 		--delete \
 		${rsyncoptions}
 	if_failed_error "Could not rsync files from Platform.sh. Confirm that SSH Key has been added to Platform.sh account and added to Docksal SSH-Agent."
@@ -7910,7 +7911,7 @@ case "$1" in
 			else
 				script_to_run="$1"
 			fi
-			_exec "PROJECT_ROOT=/var/www DOCROOT=$DOCROOT VIRTUAL_HOST=$VIRTUAL_HOST /bin/bash -c $script_to_run" "$@"
+			_exec "PROJECT_ROOT=$PROJECT_ROOT_CONTAINER DOCROOT=$DOCROOT VIRTUAL_HOST=$VIRTUAL_HOST /bin/bash -c $script_to_run" "$@"
 		else
 			_exec "$@"
 		fi
